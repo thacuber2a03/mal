@@ -1,0 +1,45 @@
+import (
+	"std.um"
+)
+
+fn READ(input: str): str {
+	return input
+}
+
+fn EVAL(input: str): str {
+	return input
+}
+
+fn PRINT(input: str): str {
+	return input
+}
+
+fn rep(input: str): str {
+	return PRINT(EVAL(READ(input)))
+}
+
+fn getline(): (str, bool) {
+	if std::feof(std::stdin()) { return "", true }
+
+	res := ""
+	for true {
+		var c: char
+		if n, e := std::fread(std::stdin(), &c); n != 1 {
+			std::assert(std::StdErr(e.code) == .eof)
+			return "", true
+		}
+		if c == '\n' { break }
+		res += c
+	}
+
+	return res, false
+}
+
+fn main() {
+	for true {
+		printf("user> ")
+		input, eof := getline()
+		if eof { break }
+		printf("%s\n", rep(input))
+	}
+}
