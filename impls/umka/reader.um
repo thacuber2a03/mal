@@ -1,0 +1,226 @@
+import (
+	"std.um"
+	"utf8.um"
+
+	"types.um"
+)
+
+type Reader* = struct {
+	tokens: []str
+	position: int
+}
+
+fn (r: ^Reader) peek(): str { return r.tokens[r.position] }
+
+fn (r: ^Reader) next(): str {
+	t := r.peek()
+	r.position++
+	return t
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+fn isSpace(c: char): bool {
+	return c == ' ' || c == '\n' || c == '\t' || c == '\v'
+}
+
+var (
+	source: str
+	position: int
+)
+
+fn isAtEnd(): bool { return position >= len(source) }
+
+fn peek(): char {
+	if isAtEnd() { return '\0' }
+	return source[position]
+}
+
+fn advance(): char {
+	c := peek()
+	position++
+	return c
+}
+
+fn peekNext(): char {
+	next := position + 1
+	if next >= len(source) { return '\0' }
+	return source[next]
+}
+
+fn strchr(c: char, s: str): int {
+	for i, c2 in s { if c == c2 { return i } }
+	return -1
+}
+
+fn tokenize(input: str): ([]str, std::Err) {
+	source = input
+	position = 0
+
+	res := []str{}
+
+	for true {
+		for !isAtEnd() &&
+		    (isSpace(peek()) || peek() == ',') {
+			advance()
+		}
+
+		if isAtEnd() { break }
+
+		c := advance()
+
+		if c == '~' && peek() == '@' {
+			advance()
+			res = append(res, "~@")
+		} else if strchr(c, "[]{}()'`~^@") != -1 {
+			res = append(res, c)
+		} else if c == '"' {
+			string := str(c)
+			for peek() != '"' {
+				if isAtEnd() { return {}, std::error(-1, "unbalanced string") }
+				if peek() == '\\' {
+					advance()
+					switch c := peek(); c {
+					case 'n': string += '\n'
+					case 'r': string += '\r'
+					case 't': string += '\t'
+					default: string += c
+					}
+					advance()
+				} else {
+					string += advance()
+				}
+			}
+			res = append(res, string + advance())
+		} else if peek() == ';' {
+			comment := str(c)
+			for !isAtEnd() && peek() != '\n' { comment += advance() }
+			res = append(res, comment)
+		} else {
+			symbol := str(c)
+			for !isAtEnd() && !isSpace(peek()) &&
+			    strchr(peek(), "[]{}('\"`,;)") == -1 {
+				symbol += advance()
+			}
+			res = append(res, symbol)
+		}
+	}
+
+	return res, {}
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+fn (r: ^Reader) readForm(): types::Object
+
+fn (r: ^Reader) readHashMap(): types::Object {
+	res := types::HashMap{}
+
+	for true {
+		k := r.readForm()
+		if !valid(k) { return types::Error{msg:"unbalanced hashmap"} }
+		if types::isError(k) { return k }
+
+		if types::symMatches(k, "}") { break }
+
+		if !types::isHashMapKey(k) {
+			return types::newError(
+					"key to hash-map must be string or keyword "+
+					"(note: keywords not yet supported)")
+		}
+
+		v := r.readForm()
+		if !valid(v) { return types::Error{msg:"odd amount of objects in hashmap"} }
+		if types::isError(v) { return v }
+		res[types::String(k)] = v
+	}
+	return res
+}
+
+fn (r: ^Reader) readFormList(vector: bool): types::Object {
+	end, otype := ')', "list"
+	if vector { end, otype = ']', "vector" }
+
+	res := types::List{vector: vector}
+	for true {
+		o := r.readForm()
+		if !valid(o) { return types::Error{msg:"unbalanced "+otype} }
+		if types::isError(o) { return o }
+		if s := ^types::Sym(o); s != null && s[0] == end { break }
+		res.data = append(res.data, o)
+	}
+	return res
+}
+
+fn (r: ^Reader) readList(): types::Object {
+	start := r.next()[0]
+	switch start {
+		case '(': return r.readFormList(false)
+		case '[': return r.readFormList(true)
+		case '{': return r.readHashMap()
+	}
+	std::assert(false, "unreachable")
+	return types::Error{msg:""}
+}
+
+var quoteForms: map[types::Sym]types::Sym
+
+fn (r: ^Reader) readAtom(): types::Object {
+	t := r.next()
+	// if t == "" { return null }
+	if t[0] == ';' || t == "nil" { return types::Nil{} }
+	if t == "true"  { return types::Bool(true) }
+	if t == "false" { return types::Bool(false) }
+
+	kw := t[0] == ':'
+	if t[0] == '"' || kw {
+		return types::String{
+			value: slice(t, 1, len(t)-int(!kw)), // clever math
+			keyword: kw
+		}
+	}
+
+	if t == "^" {
+		a := r.readForm()
+		if types::isError(a) { return a }
+		b := r.readForm()
+		if types::isError(b) { return b }
+		return types::newList({"with-meta", b, a})
+	}
+
+	if validkey(quoteForms, t) {
+		o := r.readForm()
+		if types::isError(o) { return o }
+		return types::newList({quoteForms[t], o})
+	}
+
+	n := std::atof(t)
+	if sprintf("%g", n) == t { return types::Num(n) }
+	return types::Sym(t)
+}
+
+fn (r: ^Reader) readForm(): types::Object {
+	if r.position >= len(r.tokens) { return null }
+	t := r.peek()
+	if strchr(t[0], "([{") != -1 { return r.readList() }
+	return r.readAtom()
+}
+
+fn readStr*(source: str): types::Object {
+	if !valid(quoteForms) {
+		quoteForms = {
+			"'": "quote",
+			"~": "unquote",
+			"`": "quasiquote",
+			"~@": "splice-unquote",
+			// not a quote form, but I already have
+			// the tooling set-up, so I might as well
+			"@": "deref"
+		}
+	}
+
+	t, e := tokenize(source)
+	if e.code != 0 { return types::Error{msg:e.msg} }
+	r := Reader{tokens: t}
+	return r.readForm()
+}

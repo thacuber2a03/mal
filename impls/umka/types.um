@@ -1,0 +1,53 @@
+import (
+	"std.um"
+)
+
+type (
+	Object* = interface{}
+
+	String* = struct{
+		value: str
+		keyword: bool
+	}
+
+	Nil* = struct{}
+	Bool* = bool
+	Num* = real
+	List* = struct {
+		data: []Object
+		vector: bool
+	}
+	HashMap* = map[String]Object
+
+	Sym* = str
+
+	Error* = struct{
+		// line: int
+		msg: str
+	}
+)
+
+// this is an 'ABI/API separation' kind of thing
+
+fn newError*(msg: str): Error { return Error{msg:msg}    }
+
+fn newString*(s: str): String { return String{value:s, keyword:false} }
+fn newKeyword*(s: str): String { return String{value:s, keyword:true} }
+
+fn newList*(l: []Object): List   { return List{data: l, vector: false} }
+fn newVector*(l: []Object): List { return List{data: l, vector: true } }
+
+fn newHashMap*(m: map[str]Object): HashMap {
+	res := HashMap{}
+	for k,v in m { res[newString(k)] = v }
+	return res
+}
+
+fn isError*(o: Object): bool  { return ^Error(o) != null }
+fn isHashMapKey*(v: Object): bool { return ^String(v) != null }
+
+fn symMatches*(v: Object, s: str): bool {
+	sym := ^Sym(v)
+	return sym != null && sym^ == s
+}
+
