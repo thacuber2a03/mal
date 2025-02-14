@@ -1,0 +1,159 @@
+import (
+	"std.um"
+
+	"types.um"
+	"reader.um"
+	"printer.um"
+	"env.um"
+)
+
+fn READ(input: str): types::Object {
+	return reader::readStr(input)
+}
+
+fn EVAL(ast: types::Object, env: env::Env): types::Object
+
+fn evalList(list: types::List, env: env::Env): types::Object {
+	res := make([]types::Object, len(list.data))
+	for i, v in list.data {
+		e := EVAL(v, env)
+		if types::isError(e) { return e }
+		res[i]=e
+	}
+	return types::newCollection(res, list.vector)
+}
+
+fn uncons(l: types::List): (types::Object, []types::Object) {
+	return l.data[0], slice(l.data, 1, len(l.data))
+}
+
+fn evalDef(args: []types::Object, env: env::Env): types::Object {
+	s := ^types::Sym(args[0])
+	if s == null {
+		return types::newError("expected symbol key for def!")
+	}
+	v := EVAL(args[1], env)
+	if types::isError(v) { return v }
+	env.set(s^, v)
+	return v
+}
+
+fn evalLet(args: []types::Object, env: env::Env): types::Object {
+	var newenv: env::Env
+	newenv.outer = &env
+
+	if b := ^types::List(args[0]); b == null {
+		return types::newError("expected list of bindings for let*")
+	}
+	bindings := types::List(args[0]).data
+
+	i := 0
+	for i < len(bindings) {
+		if i+1 >= len(bindings) {
+			return types::newError("odd amount of forms in let*")
+		}
+
+		k := ^types::Sym(bindings[i])
+		if k == null {
+			return types::newError("expected symbol to bind in let*")
+		}
+
+		v := EVAL(bindings[i+1], newenv)
+		if types::isError(v) { return v }
+		newenv.set(k^,v)
+		i+=2
+	}
+
+	return EVAL(args[1], newenv)
+}
+
+fn EVAL(ast: types::Object, env: env::Env): types::Object {
+	if v := env.get("DEBUG-EVAL"); types::isTruthy(v) {
+		printf("EVAL: %s\n", printer::prStr(ast, false))
+	}
+
+	switch v := type(ast) {
+	case types::Sym:
+		return env.get(v)
+	case types::List:
+		if len(v.data) == 0 { return ast }
+
+		if first, rest := uncons(v); ^types::Sym(first) != null {
+			s := types::Sym(first)
+			// this is really cursed
+			  if      s == "def!" { return evalDef(rest, env)
+			} else if s == "let*" { return evalLet(rest, env)
+			}
+		}
+
+		e := evalList(v, env)
+		if types::isError(e) { return e }
+		l := types::List(e)
+		if l.vector { return l } // real clever
+
+		first, rest := uncons(l)
+		if f := ^types::PrimFn(first); f != null {
+			return f(rest)
+		}
+	case types::HashMap:
+		res := types::HashMap{}
+		for k,val in v {
+			e := EVAL(val, env)
+			if types::isError(e) { return e }
+			res[k] = e
+		}
+		return res
+	}
+	return ast
+}
+
+fn PRINT(input: types::Object): str {
+	return printer::prStr(input, false)
+}
+
+fn rep(input: str, env: env::Env): str {
+	return PRINT(EVAL(READ(input), env))
+}
+
+fn getline(): (str, bool) {
+	if std::feof(std::stdin()) { return "", true }
+
+	res := ""
+	for true {
+		var c: char
+		if n, e := std::fread(std::stdin(), &c); n != 1 {
+			std::assert(std::StdErr(e.code) == .eof)
+			return "", true
+		}
+		if c == '\n' { break }
+		res += c
+	}
+
+	return res, false
+}
+
+fn op(f: fn(a, b: types::Num): types::Num): types::PrimFn {
+	return |f| {
+		a := ^types::Num(args[0])
+		if a == null { return types::newError("expected number") }
+		b := ^types::Num(args[1])
+		if b == null { return types::newError("expected number") }
+		return types::Num(f(a^,b^))
+	}
+}
+
+fn main() {
+	replEnv := env::mk({
+		"+": op({return a + b}),
+		"-": op({return a - b}),
+		"*": op({return a * b}),
+		"/": op({return a / b})
+	})
+
+	for true {
+		printf("user> ")
+		input, eof := getline()
+		if eof { break }
+		printf("%s\n", rep(input, replEnv))
+	}
+}

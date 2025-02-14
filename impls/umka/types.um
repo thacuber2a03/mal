@@ -55,3 +55,9 @@ fn symMatches*(v: Object, s: str): bool {
 	return sym != null && sym^ == s
 }
 
+fn isTruthy*(o: Object): bool {
+	// false, nil, and errors aren't truthy
+	if isError(o) || ^Nil(o) != null { return false }
+	if b := ^Bool(o); b != null { return b^ }
+	return true
+}
