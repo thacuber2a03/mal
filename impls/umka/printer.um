@@ -53,6 +53,10 @@ fn prStr*(v: types::Object, readable: bool): str {
 			if i < len(ks)-1 { s += " " }
 		}
 		return s + "}"
+
+	case types::PrimFn:
+		return "<primitive>"
+
 	case types::Error:
 		return sprintf("error: %s", v.msg)
 	}

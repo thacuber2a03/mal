@@ -25,6 +25,8 @@ type (
 		// line: int
 		msg: str
 	}
+
+	PrimFn* = fn(args: ..Object): Object
 )
 
 // this is an 'ABI/API separation' kind of thing
@@ -37,7 +39,9 @@ fn newKeyword*(s: str): String { return String{value:s, keyword:true} }
 fn newList*(l: []Object): List   { return List{data: l, vector: false} }
 fn newVector*(l: []Object): List { return List{data: l, vector: true } }
 
-fn newHashMap*(m: map[str]Object): HashMap {
+fn newCollection*(l: []Object, v: bool): List { return List{data: l, vector: v} }
+
+fn newStringHashMap*(m: map[str]Object): HashMap {
 	res := HashMap{}
 	for k,v in m { res[newString(k)] = v }
 	return res
