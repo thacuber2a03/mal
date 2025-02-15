@@ -73,20 +73,20 @@ fn ns*(rep: fn(_: str, e: env::Env): str): env::Env {
 		">=": boolOp({return a >= b}),
 		"<=": boolOp({return a <= b}),
 
-		"pr-str":  types::Fn{return types::newString(strJoin(args, true, " "))},
-		"prn":     types::Fn{printf("%s\n", strJoin(args, true, " ")); return types::Nil{}},
-		"println": types::Fn{printf("%s\n", strJoin(args, false, " ")); return types::Nil{}},
-		"str":     types::Fn{return types::newString(strJoin(args, false, ""))},
+		"pr-str":  types::PrimFn{return types::newString(strJoin(args, true, " "))},
+		"prn":     types::PrimFn{printf("%s\n", strJoin(args, true, " ")); return types::Nil{}},
+		"println": types::PrimFn{printf("%s\n", strJoin(args, false, " ")); return types::Nil{}},
+		"str":     types::PrimFn{return types::newString(strJoin(args, false, ""))},
 
-		"list": types::Fn{return types::newList(args)},
+		"list": types::PrimFn{return types::newList(args)},
 
-		"list?": types::Fn{
+		"list?": types::PrimFn{
 			if len(args) == 0 { return false }
 			l := ^types::List(args[0])
 			return l != null && !l.vector
 		},
 
-		"empty?": types::Fn{
+		"empty?": types::PrimFn{
 			if len(args) == 0 {
 				return types::newError("expected at least one argument for 'empty?'")
 			} else if l := ^types::List(args[0]); l != null {
@@ -95,7 +95,7 @@ fn ns*(rep: fn(_: str, e: env::Env): str): env::Env {
 			return types::newError("expected a list or a vector for 'empty?'")
 		},
 
-		"count": types::Fn{
+		"count": types::PrimFn{
 			if len(args) == 0 {
 				return types::newError("expected at least one argument for 'count'")
 			} else if l := ^types::List(args[0]); l != null {
@@ -106,7 +106,7 @@ fn ns*(rep: fn(_: str, e: env::Env): str): env::Env {
 			return types::newError("expected a list or a vector for 'count'")
 		},
 
-		"=": types::Fn{
+		"=": types::PrimFn{
 			if len(args) < 2 {
 				return types::newError("expected at least two arguments for '='")
 			}

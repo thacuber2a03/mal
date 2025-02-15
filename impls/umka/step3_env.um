@@ -39,8 +39,8 @@ fn evalDef(args: []types::Object, env: env::Env): types::Object {
 }
 
 fn evalLet(args: []types::Object, env: env::Env): types::Object {
-	var newenv: env::Env
-	newenv.outer = &env
+	newenv := env::mk({})
+	newenv.outer = env
 
 	if b := ^types::List(args[0]); b == null {
 		return types::newError("expected list of bindings for let*")

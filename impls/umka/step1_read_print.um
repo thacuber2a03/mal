@@ -15,7 +15,7 @@ fn EVAL(input: types::Object): types::Object {
 }
 
 fn PRINT(input: types::Object): str {
-	return printer::prStr(input, false)
+	return printer::prStr(input, true)
 }
 
 fn rep(input: str): str {

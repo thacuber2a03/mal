@@ -28,8 +28,14 @@ type (
 
 	PrimFn* = fn(args: []Object): Object
 
-	// in case closures become a bottleneck later on
-	Fn* = fn(args: []Object): Object
+	// they didn't become a bottleneck, step 5 just came by
+	Fn* = struct{
+		ast: Object
+		params: []Sym
+		// *not* any, env::Env, I just can't import env.um here
+		env: any
+		f: PrimFn
+	}
 )
 
 // this is an 'ABI/API separation' kind of thing

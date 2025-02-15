@@ -14,16 +14,6 @@ fn READ(input: str): types::Object {
 
 fn EVAL(ast: types::Object, env: env::Env): types::Object
 
-fn evalList(list: types::List, env: env::Env): types::Object {
-	res := make([]types::Object, len(list.data))
-	for i, v in list.data {
-		e := EVAL(v, env)
-		if types::isError(e) { return e }
-		res[i]=e
-	}
-	return types::newCollection(res, list.vector)
-}
-
 fn uncons(l: types::List): (types::Object, []types::Object) {
 	return l.data[0], slice(l.data, 1, len(l.data))
 }
@@ -39,9 +29,9 @@ fn evalDef(args: []types::Object, env: env::Env): types::Object {
 	return v
 }
 
-fn evalLet(args: []types::Object, env: env::Env): types::Object {
+fn evalLet(args: []types::Object, env: ^env::Env): types::Object {
 	newenv := env::mk({})
-	newenv.outer = env
+	newenv.outer = env^
 
 	if b := ^types::List(args[0]); b == null {
 		return types::newError("expected list of bindings for let*")
@@ -65,16 +55,16 @@ fn evalLet(args: []types::Object, env: env::Env): types::Object {
 		i+=2
 	}
 
-	return EVAL(args[1], newenv)
+	env^ = newenv
+	return args[1]
 }
 
 fn evalDo(args: []types::Object, env: env::Env): types::Object {
-	res := types::Object(types::Nil{})
-	for _,v in args {
-		res = EVAL(v, env)
-		if types::isError(res) { return res }
-	}
-	return res
+	if len(args) == 0 { return types::Nil{} }
+    for i := 0; i < len(args)-2; i++ {
+        if v := EVAL(args[i], env); types::isError(v) { return v }
+    }
+    return args[len(args)-1]
 }
 
 fn evalIf(args: []types::Object, env: env::Env): types::Object {
@@ -84,9 +74,9 @@ fn evalIf(args: []types::Object, env: env::Env): types::Object {
 
 	v := EVAL(args[0], env)
 	if types::isError(v)  { return v }
-	if types::isTruthy(v) { return EVAL(args[1], env) }
+	if types::isTruthy(v) { return args[1] }
 	if len(args) == 2 { return types::Nil{} }
-	return EVAL(args[2], env)
+	return args[2]
 }
 
 fn evalFn(args: []types::Object, env: env::Env): types::Object {
@@ -107,63 +97,88 @@ fn evalFn(args: []types::Object, env: env::Env): types::Object {
 		}
 	}
 
-	e := args[1]
+	ast := args[1]
 	return types::Fn{
-		f: |params, e, env| {
+		ast: ast, params: params, env: env,
+		f: |params, ast, env| {
 			newenv := env::mk2(params, args)
 			newenv.outer = env
-			return EVAL(e, newenv)
+			return EVAL(ast, newenv)
 		}
 	}
 }
 
+var depth: int = 0
 fn EVAL(ast: types::Object, env: env::Env): types::Object {
-	if v := env.get("DEBUG-EVAL"); types::isTruthy(v) {
-		printf("EVAL: %s\n", printer::prStr(ast, false))
-	}
+	depth++
+	for true {
+		if v := env.get("DEBUG-EVAL"); types::isTruthy(v) {
+			printf("EVAL (depth %d): %s\n", depth, printer::prStr(ast, false))
+		}
 
-	switch v := type(ast) {
-	case types::Sym:
-		return env.get(v)
-	case types::List:
-		if len(v.data) == 0 { return ast }
+		switch v := type(ast) {
+		case types::Sym:
+			depth--; return env.get(v)
+		case types::List:
+			if len(v.data) == 0 { depth--; return ast }
 
-		if first, rest := uncons(v); ^types::Sym(first) != null {
-			s := types::Sym(first)
-			// this is really cursed
-			  if      s == "def!" { return evalDef(rest, env)
-			} else if s == "let*" { return evalLet(rest, env)
-			} else if s == "do"   { return evalDo(rest, env)
-			} else if s == "if"   { return evalIf(rest, env)
-			} else if s == "fn*"  { return evalFn(rest, env)
+			if first, rest := uncons(v); ^types::Sym(first) != null {
+				s := types::Sym(first)
+				// this is really cursed
+				if s == "def!" {
+					ast = evalDef(rest, env)
+					continue
+				} else if s == "let*" {
+					ast = evalLet(rest, &env)
+					continue
+				} else if s == "do" {
+					ast = evalDo(rest, env)
+					continue
+				} else if s == "if" {
+					ast = evalIf(rest, env)
+					continue
+				} else if s == "fn*" {
+					ast = evalFn(rest, env)
+					continue
+				}
 			}
+
+			l := types::newCollection({}, v.vector)
+			for i, v in v.data {
+				e := EVAL(v, env)
+				if types::isError(e) { depth--; return e }
+				l.data = append(l.data, e)
+			}
+			if l.vector { depth--; return l } // real clever
+
+			first, rest := uncons(l)
+			if p := ^types::PrimFn(first); p != null {
+				depth--; return p(rest) 
+			} else if f := ^types::Fn(first); f != null {
+				ast = f.ast
+				newenv := env::mk2(f.params, rest)
+				newenv.outer = env
+				env = newenv
+				continue
+			} else {
+				depth--; return types::newError(sprintf(
+					"attempt to call uncallable `%s`", printer::prStr(first, true)
+				))
+			}
+		case types::HashMap:
+			res := types::HashMap{}
+			for k,val in v {
+				e := EVAL(val, env)
+				if types::isError(e) { depth--; return e }
+				res[k] = e
+			}
+			depth--; return res
 		}
 
-		e := evalList(v, env)
-		if types::isError(e) { return e }
-		l := types::List(e)
-		if l.vector { return l } // real clever
-
-		first, rest := uncons(l)
-		if p := ^types::PrimFn(first); p != null { return p(rest) }
-		// again, excuse the redundancy
-		if f := ^types::Fn(first); f != null { return f.f(rest) }
-
-		return types::newError(sprintf(
-			"attempt to call uncallable `%s`", printer::prStr(first, true)
-		))
-
-	case types::HashMap:
-		res := types::HashMap{}
-		for k,val in v {
-			e := EVAL(val, env)
-			if types::isError(e) { return e }
-			res[k] = e
-		}
-		return res
+		depth--; return ast
 	}
-
-	return ast
+	std::assert(false, "unreachable")
+	depth--; return types::Object(types::Nil{})
 }
 
 fn PRINT(input: types::Object): str {

@@ -27,7 +27,6 @@ fn evalList(list: types::List, env: Env): types::Object {
 }
 
 fn EVAL(ast: types::Object, env: Env): types::Object {
-	printf("EVAL: %s\n", printer::prStr(ast, true))
 	switch v := type(ast) {
 	case types::Sym:
 		if validkey(env, v) { return env[v] }
@@ -36,7 +35,6 @@ fn EVAL(ast: types::Object, env: Env): types::Object {
 		if len(v.data) == 0 { return ast }
 
 		e := evalList(v, env)
-		printf("before evaluation: %v\nafter evaluation: %v\n\n", v, e)
 		if types::isError(e) { return e }
 		l := types::List(e)
 		if l.vector { return l } // real clever
@@ -60,7 +58,7 @@ fn EVAL(ast: types::Object, env: Env): types::Object {
 }
 
 fn PRINT(input: types::Object): str {
-	return printer::prStr(input, false)
+	return printer::prStr(input, true)
 }
 
 fn rep(input: str, env: Env): str {
