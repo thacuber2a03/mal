@@ -1,0 +1,119 @@
+import (
+	"fnc.um"
+
+	"printer.um"
+	"types.um"
+	"env.um"
+)
+
+fn numOp(f: fn(a, b: types::Num): types::Num): types::PrimFn {
+	return |f| {
+		return fnc::Array(args).reduce(|f| {
+			a := ^types::Num(x)
+			if a == null {
+				return types::newError(sprintf(
+					"expected number, got %s",
+					printer::prStr(x, true)
+				))
+			}
+			b := ^types::Num(y)
+			if b == null {
+				return types::newError(sprintf(
+					"expected number, got %s",
+					printer::prStr(y, true)
+				))
+			}
+			return types::Num(f(a^,b^))
+		})
+	}
+}
+
+fn boolOp(f: fn(a, b: types::Num): types::Bool): types::PrimFn {
+	return |f| {
+		if len(args) < 2 { return types::newError("expected two arguments") }
+
+		a := ^types::Num(args[0])
+		if a == null {
+			return types::newError(sprintf(
+				"expected number, got %s",
+				printer::prStr(args[0], true)
+			))
+		}
+
+		b := ^types::Num(args[1])
+		if b == null {
+			return types::newError(sprintf(
+				"expected number, got %s",
+				printer::prStr(args[1], true)
+			))
+		}
+
+		return types::Bool(f(a^,b^))
+	}
+}
+
+fn strJoin(args: []types::Object, pr: bool, sep: str): str {
+	s := ""
+	for i,v in args {
+		s += printer::prStr(v, pr)
+		if i != len(args)-1 { s += sep }
+	}
+	return s
+}
+
+fn ns*(rep: fn(_: str, e: env::Env): str): env::Env {
+	ns := env::mk({
+		"+": numOp({return a + b}),
+		"-": numOp({return a - b}),
+		"*": numOp({return a * b}),
+		"/": numOp({return a / b}),
+
+		">":  boolOp({return a >  b}),
+		"<":  boolOp({return a <  b}),
+		">=": boolOp({return a >= b}),
+		"<=": boolOp({return a <= b}),
+
+		"pr-str":  types::Fn{return types::newString(strJoin(args, true, " "))},
+		"prn":     types::Fn{printf("%s\n", strJoin(args, true, " ")); return types::Nil{}},
+		"println": types::Fn{printf("%s\n", strJoin(args, false, " ")); return types::Nil{}},
+		"str":     types::Fn{return types::newString(strJoin(args, false, ""))},
+
+		"list": types::Fn{return types::newList(args)},
+
+		"list?": types::Fn{
+			if len(args) == 0 { return false }
+			l := ^types::List(args[0])
+			return l != null && !l.vector
+		},
+
+		"empty?": types::Fn{
+			if len(args) == 0 {
+				return types::newError("expected at least one argument for 'empty?'")
+			} else if l := ^types::List(args[0]); l != null {
+				return len(l.data) == 0
+			}
+			return types::newError("expected a list or a vector for 'empty?'")
+		},
+
+		"count": types::Fn{
+			if len(args) == 0 {
+				return types::newError("expected at least one argument for 'count'")
+			} else if l := ^types::List(args[0]); l != null {
+				return types::Num(len(l.data))
+			} else if ^types::Nil(args[0]) != null {
+				return types::Num(0)
+			}
+			return types::newError("expected a list or a vector for 'count'")
+		},
+
+		"=": types::Fn{
+			if len(args) < 2 {
+				return types::newError("expected at least two arguments for '='")
+			}
+			return types::equal(args[0], args[1])
+		}
+	})
+
+	rep("(def! not (fn* (a) (if a false true)))", ns)
+	return ns
+}

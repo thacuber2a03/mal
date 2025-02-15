@@ -26,7 +26,10 @@ type (
 		msg: str
 	}
 
-	PrimFn* = fn(args: ..Object): Object
+	PrimFn* = fn(args: []Object): Object
+
+	// in case closures become a bottleneck later on
+	Fn* = fn(args: []Object): Object
 )
 
 // this is an 'ABI/API separation' kind of thing
@@ -60,4 +63,34 @@ fn isTruthy*(o: Object): bool {
 	if isError(o) || ^Nil(o) != null { return false }
 	if b := ^Bool(o); b != null { return b^ }
 	return true
+}
+
+fn equal*(a, b: Object): bool {
+	if !selftypeeq(a, b) { return false }
+
+	switch v := type(a) {
+	case Sym: return v == Sym(b)
+	case Num: return v == Num(b)
+	case String:
+		w := String(b)
+		return v.value == w.value && v.keyword == w.keyword
+	case Bool: return v == Bool(b)
+	case Nil: return true
+
+	case List:
+		w := List(b)
+		if len(v.data) != len(w.data) { return false }
+		for i,v in v.data {
+			if !equal(v, w.data[i]) { return false }
+		}
+		return true
+
+	case HashMap:
+		w := HashMap(b)
+		if len(v) != len(w) { return false }
+		for k,v in v { if !equal(v, w[k]) { return false } }
+		return true
+	}
+
+	return false
 }

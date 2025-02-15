@@ -24,26 +24,31 @@ fn escape(s: str): str {
 }
 
 fn prStr*(v: types::Object, readable: bool): str {
+	var res: str
 	switch v := type(v) {
 	case types::Num:
-		return sprintf("%g", v)
+		res = sprintf("%g", v)
 	case types::String:
-		if v.keyword { return ':' + v.value }
-		if !readable { return '"' + escape(v.value) + '"' }
-		return v.value
+		if v.keyword {
+			res = ':' + v.value
+		} else if readable {
+			res = '"' + escape(v.value) + '"'
+		} else {
+			res = v.value
+		}
 	case types::Sym:
-		return v
+		res = v
 	case types::Nil:
-		return "nil"
+		res = "nil"
 	case types::Bool:
-		return sprintf("%v", v)
+		res = sprintf("%v", v)
 	case types::List:
 		s := v.vector ? "[" : "("
 		for i, val in v.data {
 			s += prStr(val, readable)
 			if i < len(v.data)-1 { s += " " }
 		}
-		return s + (v.vector ? "]" : ")")
+		res = s + (v.vector ? "]" : ")")
 	case types::HashMap:
 		s := "{"
 		ks := keys(v)
@@ -52,15 +57,13 @@ fn prStr*(v: types::Object, readable: bool): str {
 			s += sprintf("%s %s", prStr(k, readable), prStr(v, readable))
 			if i < len(ks)-1 { s += " " }
 		}
-		return s + "}"
+		res = s + "}"
 
-	case types::PrimFn:
-		return "<primitive>"
+	case types::PrimFn: res = "#<primitive>"
+	case types::Fn:     res = "#<function>"
 
-	case types::Error:
-		return sprintf("error: %s", v.msg)
+	case types::Error: res = sprintf("error: %s", v.msg)
 	}
 
-	std::assert(false, sprintf("unreachable case for value %+v", v))
-	return ""
+	return res
 }
